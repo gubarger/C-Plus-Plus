@@ -6,6 +6,8 @@
  * hash](https://en.wikipedia.org/wiki/Linear_probing) keys.
  * @note The implementation can be optimized by using OOP style.
  */
+
+#include <cassert>
 #include <iostream>
 #include <vector>
 
@@ -17,261 +19,370 @@
  * probing](https://en.wikipedia.org/wiki/Linear_probing) algorithm.
  */
 namespace linear_probing {
-// fwd declarations
-using Entry = struct Entry;
-bool putProber(const Entry& entry, int key);
-bool searchingProber(const Entry& entry, int key);
-void add(int key);
+/**
+ * @class
+ * @brief Linear Probing Hash Table Class
+ */
+class linear_robing_hash_table {
+ public:
+    /**
+     * @public
+     * @brief Hash table constructor
+     * @param stCap initial table capacity
+     */
+    linear_robing_hash_table(int stCap);
 
-// Undocumented globals
-int notPresent;
-std::vector<Entry> table;
-int totalSize;
-int tomb = -1;
-int size;
-bool rehashing;
+    /**
+     * @public
+     * @brief Checks if a key exists in the table
+     * @param key The key to check for
+     * @return true if the key exists, false otherwise
+     */
+    bool contains(int key);
 
-/** Node object that holds key */
-struct Entry {
-    explicit Entry(int key = notPresent) : key(key) {}  ///< constructor
-    int key;                                            ///< key value
+    /**
+     * @public
+     * @brief Inserts a key into the table
+     * @param key the key to insert
+     */
+    void insert(int key);
+
+    /**
+     * @public
+     * @brief Deletes a key from the table
+     * @param key the key to delete
+     * @return true if the key was deleted, false if not found
+     */
+    bool remove(int key);
+
+    /**
+     * @public
+     * @brief Returns the current size of the table
+     * @return the number of elements in the table
+     */
+    int getSize() const { return size; }
+
+    /**
+     * @public
+     * @brief Checks if the table is empty
+     * @return true if the table is empty
+     */
+    bool isEmpty() const { return size == 0; }
+
+    /**
+     * @public
+     * @brief Outputs the table contents (for debugging)
+     */
+    void print();
+
+    /**
+     * @public
+     * @brief Hash a key. Uses the STL library's `std::hash()` function.
+     * @param key the key to hash
+     * @return the hash value of the key
+     */
+    size_t hash(int key) const;
+
+ private:
+    /**
+     * @struct
+     * @private
+     * @brief Node object that holds key
+     */
+    struct Entry {
+        explicit Entry(int key = empty) : key(key) {}
+        int key;  ///< key value
+    };
+
+    /**
+     * @private
+     * @brief Performs a linear scan to find the index
+     * @param key the key to search for
+     * @param search true search for an existing key, false - search for
+     * a free cell
+     * @return the index of the cell found, or -1 if not found
+     */
+    int findIndex(int key, bool search) const;
+
+    /**
+     * @private
+     * @brief Finds the index of an existing key
+     * @param key the key to find
+     * @return index of the key, or -1 if not found
+     */
+    int findKey(int key) const { return findIndex(key, true); }
+
+    /**
+     * @private
+     * @brief Finds a free slot for insertion
+     * @param key the key to insert (used for hash calculation)
+     * @return index of free slot, or -1 if table is full
+     */
+    int findFreeSlot(int key) const { return findIndex(key, false); }
+
+    /**
+     * @private
+     * @brief Rehashes the table when the load factor is exceeded
+     */
+    void rehash();
+
+ private:
+    static const int empty = -1;  ///< constant for empty cells
+    static const int tomb = -2;   ///< constant for deleted elements
+
+    int cap;                   ///< total table capacity
+    int size;                  ///< current number of elements
+    bool isRehashing;          ///< rehashing process flag
+    std::vector<Entry> table;  ///< array for storing elements
 };
 
-/**
- * @brief Hash a key. Uses the STL library's `std::hash()` function.
- *
- * @param key value to hash
- * @return hash value of the key
- */
-size_t hashFxn(int key) {
+linear_robing_hash_table::linear_robing_hash_table(int size)
+    : cap(size), size(0), isRehashing(false) {
+    table.resize(cap, Entry(empty));
+}
+
+void linear_robing_hash_table::print() {
+    std::cout << "Hash table (size: " << size << " | " << cap << ")\n";
+
+    for (int i = 0; i < cap; i++) {
+        std::cout << "[" << i << "]: ";
+
+        if (table[i].key == empty) {
+            std::cout << "EMPTY";
+        } else if (table[i].key == tomb) {
+            std::cout << "TOMB";
+        } else {
+            std::cout << table[i].key;
+        }
+
+        std::cout << "\n";
+    }
+}
+
+size_t linear_robing_hash_table::hash(int key) const {
     std::hash<int> hash;
     return hash(key);
 }
 
-/** Performs linear probing to resolve collisions
- * @param key key value to hash
- * @return hash value of the key
- */
-int linearProbe(int key, bool searching) {
-    int hash = static_cast<int>(hashFxn(key));
-    int i = 0;
-    Entry entry;
-    do {
-        int index = static_cast<int>((hash + i) % totalSize);
-        entry = table[index];
-        if (searching) {
-            if (entry.key == notPresent) {
-                return notPresent;
+int linear_robing_hash_table::findIndex(int key, bool search) const {
+    int curHash = static_cast<int>(hash(key) % cap);
+
+    for (int i = 0; i < cap; i++) {
+        int index = (curHash + i) % cap;
+
+        if (search && table[index].key == empty) {
+            return -1;
+        }
+
+        if (search) {
+            if (table[index].key == empty) {
+                return -1;
             }
-            if (searchingProber(entry, key)) {
-                std::cout << "Found key!" << std::endl;
+            if (table[index].key == key) {
                 return index;
             }
-            std::cout << "Found tombstone or equal hash, checking next"
-                      << std::endl;
-            i++;
         } else {
-            if (putProber(entry, key)) {
-                if (!rehashing) {
-                    std::cout << "Spot found!" << std::endl;
-                }
+            if (table[index].key == empty || table[index].key == tomb) {
                 return index;
             }
-            if (!rehashing) {
-                std::cout << "Spot taken, looking at next" << std::endl;
+            if (table[index].key == key) {
+                return index;
             }
-            i++;
-        }
-        if (i == totalSize) {
-            std::cout << "Linear probe failed" << std::endl;
-            return notPresent;
-        }
-    } while (entry.key != notPresent);
-    return notPresent;
-}
-
-/** Finds empty spot
- * @param entry instance to check in
- * @param key key value to hash
- * @return hash value of the key
- */
-bool putProber(const Entry& entry, int key) {
-    if (entry.key == notPresent || entry.key == tomb) {
-        return true;
-    }
-    return false;
-}
-
-/** Looks for a matching key
- * @param entry instance to check in
- * @param key key value to hash
- * @return hash value of the key
- */
-bool searchingProber(const Entry& entry, int key) {
-    if (entry.key == key) {
-        return true;
-    }
-    return false;
-}
-
-/** Function to displays the table
- * @returns none
- */
-void display() {
-    for (int i = 0; i < totalSize; i++) {
-        if (table[i].key == notPresent) {
-            std::cout << " Empty ";
-        } else if (table[i].key == tomb) {
-            std::cout << " Tomb ";
-        } else {
-            std::cout << " ";
-            std::cout << table[i].key;
-            std::cout << " ";
         }
     }
-    std::cout << std::endl;
+
+    return -1;
 }
 
-/** Rehashes the table into a bigger table
- * @returns None
- */
-void rehash() {
-    // Necessary so wall of add info isn't printed all at once
-    rehashing = true;
-    int oldSize = totalSize;
-    std::vector<Entry> oldTable(table);
-    // Really this should use the next prime number greater than totalSize *
-    // 2
-    totalSize *= 2;
-    table = std::vector<Entry>(totalSize);
-    for (int i = 0; i < oldSize; i++) {
-        if (oldTable[i].key != -1 && oldTable[i].key != notPresent) {
-            size--;  // Size stays the same (add increments size)
-            add(oldTable[i].key);
-        }
+bool linear_robing_hash_table::contains(int key) { return findKey(key) != -1; }
+
+void linear_robing_hash_table::insert(int key) {
+    if (contains(key)) {
+        return;  // The key already exists
     }
-    // delete[] oldTable;
-    rehashing = false;
-    std::cout << "Table was rehashed, new size is: " << totalSize << std::endl;
-}
 
-/** Adds entry using linear probing. Checks for load factor here
- * @param key key value to hash and add
- */
-void add(int key) {
-    int index = linearProbe(key, false);
+    int index = findFreeSlot(key);
+    if (index == -1) {
+        rehash();
+        index = findFreeSlot(key);
+
+        assert(index != -1 && "Table should have free space after rehash");
+    }
+
     table[index].key = key;
+
     // Load factor greater than 0.5 causes resizing
-    if (++size / static_cast<double>(totalSize) >= 0.5) {
+    if (static_cast<double>(size++) / cap >= 0.5 && !isRehashing) {
         rehash();
     }
 }
 
-/** Removes key. Leaves tombstone upon removal.
- * @param key key value to hash and remove
- */
-void remove(int key) {
-    int index = linearProbe(key, true);
-    if (index == notPresent) {
-        std::cout << "key not found" << std::endl;
+void linear_robing_hash_table::rehash() {
+    // Necessary so wall of add info isn't printed all at once
+    isRehashing = true;
+    int oldSize = cap;
+    std::vector<Entry> oldTable = std::move(table);
+
+    // Really this should use the next prime number greater than cap *
+    // 2
+    cap *= 2;
+    table = std::vector<Entry>(cap, Entry(empty));
+    size = 0;
+
+    for (int i = 0; i < oldSize; i++) {
+        if (oldTable[i].key != empty && oldTable[i].key != tomb) {
+            insert(oldTable[i].key);
+        }
     }
-    std::cout << "Removal Successful, leaving tomb" << std::endl;
-    table[index].key = tomb;
-    size--;
+
+    isRehashing = false;
 }
 
-/** Information about the adding process
- * @param key key value to hash and add
- */
-void addInfo(int key) {
-    std::cout << "Initial table: ";
-    display();
-    std::cout << std::endl;
-    std::cout << "hash of " << key << " is " << hashFxn(key) << " % "
-              << totalSize << " == " << hashFxn(key) % totalSize;
-    std::cout << std::endl;
-    add(key);
-    std::cout << "New table: ";
-    display();
-}
-
-/** Information about removal process
- * @param key key value to hash and remove
- */
-void removalInfo(int key) {
-    std::cout << "Initial table: ";
-    display();
-    std::cout << std::endl;
-    std::cout << "hash of " << key << " is " << hashFxn(key) << " % "
-              << totalSize << " == " << hashFxn(key) % totalSize;
-    std::cout << std::endl;
-    remove(key);
-    std::cout << "New table: ";
-    display();
+bool linear_robing_hash_table::remove(int key) {
+    int index = findKey(key);
+    if (index != -1) {
+        table[index].key = tomb;
+        size--;
+        return true;
+    }
+    return false;
 }
 }  // namespace linear_probing
 /**
  * @}
  */
 
-using linear_probing::Entry;
-using linear_probing::table;
-using linear_probing::totalSize;
+namespace test_linear_probing {
+/**To test hash table functions
+ * @returns None
+ */
+bool test() {
+    std::cout << "===Start tests \"linear probing hash table\"===\n";
+
+    {  // insert and find
+        linear_probing::linear_robing_hash_table ht(10);
+
+        ht.insert(5);
+        ht.insert(15);
+
+        assert(ht.contains(5) == true);
+        assert(ht.contains(15) == true);
+        assert(ht.contains(999) == false);
+
+        std::cout << "TEST 1 | +insert and find | PASSED\n";
+    }
+
+    {  // contains
+        linear_probing::linear_robing_hash_table ht(10);
+
+        assert(ht.contains(5) == false);
+        ht.insert(5);
+        assert(ht.contains(5) == true);
+
+        std::cout << "TEST 2 | +contains | PASSED\n";
+    }
+
+    {  // collision
+        linear_probing::linear_robing_hash_table ht(5);
+
+        ht.insert(0);
+        ht.insert(5);
+        ht.insert(10);
+        ht.insert(15);
+
+        assert(ht.contains(0) == true);
+        assert(ht.contains(5) == true);
+        assert(ht.contains(10) == true);
+        assert(ht.contains(15) == true);
+
+        std::cout << "TEST 3 | +collision | PASSED\n";
+    }
+
+    {  // remove
+        linear_probing::linear_robing_hash_table ht(10);
+
+        ht.insert(5);
+        ht.insert(15);
+
+        assert(ht.contains(5) == true);
+
+        bool remove = ht.remove(5);
+
+        assert(remove == true);
+        assert(ht.contains(5) == false);
+        assert(ht.contains(15) == true);
+
+        remove = ht.remove(100000000);
+
+        assert(remove == false);
+
+        std::cout << "TEST 4 | +remove | PASSED\n";
+    }
+
+    {  // rehash
+        linear_probing::linear_robing_hash_table ht(3);
+
+        ht.insert(1);
+        ht.insert(2);
+        ht.insert(3);
+
+        assert(ht.contains(1) == true);
+        assert(ht.contains(2) == true);
+        assert(ht.contains(3) == true);
+
+        std::cout << "TEST 5 | +rehash | PASSED\n";
+    }
+
+    {  // hash
+        linear_probing::linear_robing_hash_table ht(10);
+
+        size_t hash1 = ht.hash(5);
+        size_t hash2 = ht.hash(15);
+        size_t hash3 = ht.hash(5);
+
+        assert(hash1 == hash3);
+        assert(hash1 != hash2);
+
+        std::cout << "TEST 6 | +hash | PASSED\n";
+    }
+
+    {  // empty
+        linear_probing::linear_robing_hash_table ht(5);
+
+        assert(ht.isEmpty() == true);
+        assert(ht.getSize() == 0);
+        assert(ht.contains(100) == false);
+        assert(ht.remove(42) == false);
+
+        std::cout << "TEST 6 | +empty | PASSED\n";
+    }
+
+    {  // tomb
+        linear_probing::linear_robing_hash_table ht(5);
+
+        ht.insert(5);
+        ht.insert(10);
+        ht.remove(5);
+
+        ht.insert(15);
+
+        assert(ht.contains(15) == true);
+        assert(ht.contains(10) == true);
+        assert(ht.contains(5) == false);
+
+        std::cout << "TEST 6 | +tomb | PASSED\n";
+    }
+
+    std::cout << "===ALL TESTS PASSED===\n";
+
+    return 0;
+}
+}  // namespace test_linear_probing
 
 /** Main function
  * @returns 0 on success
  */
 int main() {
-    int cmd = 0, key = 0;
-    std::cout << "Enter the initial size of Hash Table. = ";
-    std::cin >> totalSize;
-    table = std::vector<Entry>(totalSize);
-    bool loop = true;
-    while (loop) {
-        std::cout << std::endl;
-        std::cout << "PLEASE CHOOSE -" << std::endl;
-        std::cout << "1. Add key. (Numeric only)" << std::endl;
-        std::cout << "2. Remove key." << std::endl;
-        std::cout << "3. Find key." << std::endl;
-        std::cout << "4. Generate Hash. (Numeric only)" << std::endl;
-        std::cout << "5. Display Hash table." << std::endl;
-        std::cout << "6. Exit." << std::endl;
-        std::cin >> cmd;
-        switch (cmd) {
-            case 1:
-                std::cout << "Enter key to add = ";
-                std::cin >> key;
-                linear_probing::addInfo(key);
-                break;
-            case 2:
-                std::cout << "Enter key to remove = ";
-                std::cin >> key;
-                linear_probing::removalInfo(key);
-                break;
-            case 3: {
-                std::cout << "Enter key to search = ";
-                std::cin >> key;
-                Entry entry = table[linear_probing::linearProbe(key, true)];
-                if (entry.key == linear_probing::notPresent) {
-                    std::cout << "Key not present";
-                }
-                break;
-            }
-            case 4:
-                std::cout << "Enter element to generate hash = ";
-                std::cin >> key;
-                std::cout << "Hash of " << key
-                          << " is = " << linear_probing::hashFxn(key);
-                break;
-            case 5:
-                linear_probing::display();
-                break;
-            default:
-                loop = false;
-                break;
-                // delete[] table;
-        }
-        std::cout << std::endl;
-    }
+    test_linear_probing::test();
     return 0;
 }
